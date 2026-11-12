@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="uz"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADMIN DEXO GPT</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<style>
+:root{--bg:#16181d;--c:#1e2128;--b:#2f343e;--t:#eceff4;--m:#97a0af;--a:#f5b942;--g:#5fd0c5}
+*{box-sizing:border-box}
+body{margin:0 auto;background:var(--bg);color:var(--t);font:15px/1.45 system-ui,sans-serif;padding:12px;max-width:900px}
+h1{font-size:21px;margin:8px 0 2px}
+h2{font-size:15px;margin:0 0 8px;color:var(--a)}
+.card{background:var(--c);border:1px solid var(--b);border-radius:10px;padding:12px;margin:10px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;align-items:flex-end}
+.row>*{flex:1 1 90px}
+label{font-size:12px;color:var(--m);display:block;margin-bottom:2px}
+input,textarea{width:100%;background:var(--bg);color:var(--t);border:1px solid var(--b);border-radius:8px;padding:8px;font:13px ui-monospace,monospace}
+textarea{min-height:90px}
+button{background:var(--a);color:#1a1300;border:0;border-radius:8px;padding:10px 12px;font-weight:700;font-size:14px}
+button.s{background:var(--b);color:var(--t)}
+button.r{background:#f07178;color:#200}
+button:disabled{opacity:.4}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--g);outline-offset:1px}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tri div{background:var(--bg);border:1px solid var(--b);border-radius:8px;padding:8px}
+.tri b{display:block;font-size:19px;color:var(--g)}
+.tri span{font-size:11px;color:var(--m)}
+canvas{width:100%;height:140px;background:var(--bg);border-radius:8px;display:block}
+pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:8px;border-radius:8px;min-height:50px;margin:6px 0}
+small,.hint{color:var(--m);font-size:12px}
+#adv{margin:8px 0 0;color:var(--a);font-size:13px}
+</style></head><body>
+<h1>ADMIN DEXO GPT</h1>
+<small id="be">Yuklanmoqda...</small>
+
+<div class="card">
+<h2>Uchlik: ma'lumot, model, vaqt</h2>
+<div class="tri">
+<div><span>Ma'lumot (token)</span><b id="sD">0</b><span id="sDd"></span></div>
+<div><span>Model (parametr)</span><b id="sM">0</b><span id="sMd"></span></div>
+<div><span>O'qitilgan</span><b id="sT">0</b><span id="sTd"></span></div>
+</div>
+<p id="adv"></p>
+</div>
+
+<div class="card">
+<h2>1. Ma'lumot (ko'paytirib boraverasiz)</h2>
+<label>Kirish (masalan: "Mana HTML kod, tugma ishlamayapti, to'g'rila" + kod)</label>
+<textarea id="dIn"></textarea>
+<label>To'g'ri javob (to'liq tuzatilgan kod)</label>
+<textarea id="dOut"></textarea>
+<div class="row"><button id="addP">Juftlik qo'shish</button>
+<button class="r" id="clr">Barcha ma'lumotni o'chirish</button></div>
+<label>Fayllar: .txt .js .html .css .json .md .java .py (xom kod, til o'rganadi) yoki .jsonl (har qatorda {"in":"...","out":"..."})</label>
+<input type="file" id="fl" multiple>
+<p class="hint">Bitta juftlik model konteksti (ctx) ichiga sig'ishi kerak, aks holda o'rtadan kesiladi.</p>
+</div>
+
+<div class="card">
+<h2>2. Model (kattalashtiriladi)</h2>
+<div class="row">
+<button class="s" data-p="4,128,4,128">Kichik ~0.8M</button>
+<button class="s" data-p="6,256,8,256">O'rta ~5M</button>
+<button class="s" data-p="8,384,6,256">Katta ~14M</button>
+</div>
+<div class="row">
+<div><label>Qatlam (L)</label><input id="cL" type="number" value="4"></div>
+<div><label>Kenglik (C)</label><input id="cC" type="number" value="128"></div>
+<div><label>Bosh (H)</label><input id="cH" type="number" value="4"></div>
+<div><label>Kontekst (T)</label><input id="cT" type="number" value="128"></div>
+</div>
+<button id="mk">Yangi model yaratish</button>
+<div class="row">
+<div><label>Qo'shiladigan qatlam</label><input id="gL" type="number" value="2"></div>
+<button class="s" id="grL">+ Qatlam (o'rganganini saqlaydi)</button>
+</div>
+<div class="row">
+<div><label>Yangi kontekst</label><input id="gT" type="number" value="256"></div>
+<button class="s" id="grT">Kontekstni uzaytirish</button>
+</div>
+</div>
+
+<div class="card">
+<h2>3. O'qitish</h2>
+<div class="row">
+<div><label>Batch</label><input id="tB" type="number" value="8"></div>
+<div><label>Learning rate</label><input id="tLR" type="number" step="0.0001" value="0.0006"></div>
+<div><label>Jami qadam (jadval)</label><input id="tS" type="number" value="20000"></div>
+<div><label>Kirish og'irligi (0-1)</label><input id="tW" type="number" step="0.1" value="0.3"></div>
+</div>
+<div class="row"><button id="go">O'qitishni boshlash / davom etish</button><button class="r" id="stop">To'xtatish</button></div>
+<canvas id="ch"></canvas>
+<pre id="log">Hali boshlanmagan</pre>
+<p class="hint">Har 200 qadamda avtomatik checkpoint saqlanadi. Sahifani yopib, keyin davom ettirsangiz bo'ladi.</p>
+</div>
+
+<div class="card">
+<h2>4. Sinov</h2>
+<textarea id="pr" placeholder="Kirish (o'qitishdagi formatda)"></textarea>
+<div class="row">
+<div><label>Temperature</label><input id="gTemp" type="number" step="0.1" value="0.5"></div>
+<div><label>Top-k</label><input id="gK" type="number" value="20"></div>
+<div><label>Maks. uzunlik</label><input id="gN" type="number" value="400"></div>
+</div>
+<button id="gen">Javob yaratish</button>
+<pre id="out"></pre>
+</div>
+
+<div class="card">
+<h2>5. Saqlash va ko'chirish</h2>
+<div class="row"><button id="ex">Modelni yuklab olish (.bin)</button></div>
+<label>Modelni yuklash (boshqa qurilmadan davom etish yoki DEXO GPT uchun tekshirish)</label>
+<input type="file" id="im" accept=".bin">
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const V=256,enc=new TextEncoder(),dec=new TextDecoder();
+let corpus=new Uint8Array(0),cmask=new Uint8Array(0),npairs=0;
+let P=null,cfg=null,opt=null,running=false,st={step:0,seen:0,losses:[],agg:5};
+
+/* ---------- IndexedDB ---------- */
+const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('dexogpt',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+async function dbGet(k){const d=await idb();return new Promise(r=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(undefined)})}
+async function dbSet(k,v){const d=await idb();return new Promise((r,j)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=r;t.onerror=()=>j(t.error)})}
+
+/* ---------- Ma'lumot ---------- */
+const cat=a=>{const n=new Uint8Array(a.reduce((s,x)=>s+x.length,0));let o=0;a.forEach(x=>{n.set(x,o);o+=x.length});return n};
+const clean=s=>String(s).replace(/[\x01-\x03]/g,'').trim();
+const pairBytes=(a,b)=>enc.encode('\x01'+clean(a)+'\x02'+clean(b)+'\x03');
+function buildMask(){cmask=new Uint8Array(corpus.length);let s=0;npairs=0;
+ for(let i=0;i<corpus.length;i++){const b=corpus[i];if(b===1)s=1;else if(b===2)s=0;else if(b===3)npairs++;cmask[i]=s}}
+async function addBytes(u8){corpus=cat([corpus,u8]);buildMask();await dbSet('corpus',corpus.buffer);stats()}
+$('addP').onclick=async()=>{if(!clean($('dIn').value)||!clean($('dOut').value))return alert('Kirish va javobni to\'ldiring');
+ await addBytes(pairBytes($('dIn').value,$('dOut').value));$('dIn').value='';$('dOut').value=''};
+$('fl').onchange=async e=>{for(const f of e.target.files){const t=await f.text();let b;
+ if(/\.jsonl$/i.test(f.name)){b=cat(t.split('\n').filter(Boolean).map(l=>{try{const j=JSON.parse(l);return pairBytes(j.in,j.out)}catch{return new Uint8Array(0)}}))}
+ else b=enc.encode(clean(t)+'\n\x03');
+ await addBytes(b)}e.target.value=''};
+$('clr').onclick=async()=>{if(!confirm('Barcha ma\'lumot o\'chadi. Model qoladi. Davom etasizmi?'))return;
+ corpus=new Uint8Array(0);buildMask();await dbSet('corpus',corpus.buffer);stats()};
+
+/* ---------- Model ---------- */
+const mkV=f=>tf.tidy(()=>tf.variable(f()));
+function disposeP(){if(P)Object.values(P).forEach(v=>v.dispose());P=null;if(opt){opt.dispose();opt=null}}
+function makeOpt(){if(opt)opt.dispose();opt=tf.train.adam(+$('tLR').value||6e-4,0.9,0.95,1e-8)}
+function addLayer(i,zero){const C=cfg.C,s=0.02,sp=zero?0:s/Math.sqrt(2*cfg.L),k='l'+i;
+ const rn=(sh,sd)=>mkV(()=>sd?tf.randomNormal(sh,0,sd):tf.zeros(sh));
+ P[k+'_g1']=mkV(()=>tf.ones([C]));P[k+'_b1']=mkV(()=>tf.zeros([C]));
+ P[k+'_qW']=rn([C,3*C],s);P[k+'_qB']=mkV(()=>tf.zeros([3*C]));
+ P[k+'_pW']=rn([C,C],sp);P[k+'_pB']=mkV(()=>tf.zeros([C]));
+ P[k+'_g2']=mkV(()=>tf.ones([C]));P[k+'_b2']=mkV(()=>tf.zeros([C]));
+ P[k+'_f1W']=rn([C,4*C],s);P[k+'_f1B']=mkV(()=>tf.zeros([4*C]));
+ P[k+'_f2W']=rn([4*C,C],sp);P[k+'_f2B']=mkV(()=>tf.zeros([C]))}
+function initModel(c){disposeP();cfg=c;P={};
+ P.wte=mkV(()=>tf.randomNormal([V,c.C],0,0.02));P.wpe=mkV(()=>tf.randomNormal([c.T,c.C],0,0.02));
+ for(let i=0;i<c.L;i++)addLayer(i,false);
+ P.lfg=mkV(()=>tf.ones([c.C]));P.lfb=mkV(()=>tf.zeros([c.C]));
+ st={step:0,seen:0,losses:[],agg:5};makeOpt()}
+function getCfg(){return{L:+$('cL').value,C:+$('cC').value,H:+$('cH').value,T:+$('cT').value}}
+function setCfgUI(){$('cL').value=cfg.L;$('cC').value=cfg.C;$('cH').value=cfg.H;$('cT').value=cfg.T}
+document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{const p=b.dataset.p.split(',');['cL','cC','cH','cT'].forEach((id,i)=>$(id).value=p[i])});
+$('mk').onclick=()=>{if(running)return alert('Avval o\'qitishni to\'xtating');const c=getCfg();
+ if(!(c.L>0&&c.C>0&&c.H>0&&c.T>1)||c.C%c.H)return alert('Kenglik (C) bosh soniga (H) bo\'linishi kerak');
+ if(P&&!confirm('Mavjud model o\'chadi. Davom etasizmi?'))return;
+ initModel(c);stats();draw();save()};
+$('grL').onclick=()=>{if(!P||running)return alert('Model yo\'q yoki o\'qitish ketyapti');const n=Math.max(1,+$('gL').value|0),old=cfg.L;
+ cfg={...cfg,L:old+n};for(let i=old;i<cfg.L;i++)addLayer(i,true);makeOpt();setCfgUI();stats();save()};
+$('grT').onclick=()=>{if(!P||running)return alert('Model yo\'q yoki o\'qitish ketyapti');const n=+$('gT').value|0;if(n<=cfg.T)return alert('Yangi kontekst hozirgidan katta bo\'lsin');
+ const nw=mkV(()=>tf.concat([P.wpe,tf.randomNormal([n-cfg.T,cfg.C],0,0.02)],0));P.wpe.dispose();P.wpe=nw;cfg={...cfg,T:n};makeOpt();setCfgUI();stats();save()};
+
+/* ---------- Transformer ---------- */
+function ln(x,g,b){const m=x.mean(-1,true),d=x.sub(m);return d.div(d.square().mean(-1,true).add(1e-5).sqrt()).mul(g).add(b)}
+const gelu=x=>x.mul(0.5).mul(tf.tanh(x.add(x.square().mul(x).mul(0.044715)).mul(0.7978845608)).add(1));
+function fwd(ids){const [B,Tn]=ids.shape,C=cfg.C,H=cfg.H,D=C/H,N=B*Tn;
+ let x=tf.gather(P.wte,ids.flatten()).add(tf.tile(P.wpe.slice([0,0],[Tn,C]),[B,1]));
+ const neg=tf.linalg.bandPart(tf.ones([Tn,Tn]),-1,0).sub(1).mul(1e9);
+ for(let i=0;i<cfg.L;i++){const p=n=>P['l'+i+n];
+  const qkv=ln(x,p('_g1'),p('_b1')).matMul(p('_qW')).add(p('_qB')).reshape([B,Tn,3,H,D]);
+  const sp=k=>qkv.slice([0,0,k,0,0],[B,Tn,1,H,D]).reshape([B,Tn,H,D]).transpose([0,2,1,3]);
+  const a=tf.softmax(sp(0).matMul(sp(1),false,true).mul(1/Math.sqrt(D)).add(neg));
+  const y=a.matMul(sp(2)).transpose([0,2,1,3]).reshape([N,C]);
+  x=x.add(y.matMul(p('_pW')).add(p('_pB')));
+  x=x.add(gelu(ln(x,p('_g2'),p('_b2')).matMul(p('_f1W')).add(p('_f1B'))).matMul(p('_f2W')).add(p('_f2B')))}
+ return ln(x,P.lfg,P.lfb).matMul(P.wte,false,true)}
+function lossFn(x,y,w){const lp=tf.logSoftmax(fwd(x)),oh=tf.oneHot(y.flatten(),V).cast('float32');
+ return lp.mul(oh).sum(-1).neg().mul(w).sum().div(w.sum())}
+function batch(){const B=+$('tB').value,T=cfg.T,lw=+$('tW').value,n=corpus.length-T-2;
+ const x=new Int32Array(B*T),y=new Int32Array(B*T),w=new Float32Array(B*T);
+ for(let i=0;i<B;i++){const o=Math.floor(Math.random()*n);
+  for(let j=0;j<T;j++){const q=i*T+j;x[q]=corpus[o+j];y[q]=corpus[o+j+1];w[q]=cmask[o+j+1]?lw:1}}
+ return{x:tf.tensor2d(x,[B,T],'int32'),y:tf.tensor2d(y,[B,T],'int32'),w:tf.tensor1d(w)}}
+function trainStep(lr){let loss=0;
+ tf.tidy(()=>{const b=batch(),r=tf.variableGrads(()=>lossFn(b.x,b.y,b.w),Object.values(P));
+  loss=r.value.dataSync()[0];if(!isFinite(loss))return;
+  const g=r.grads,gn=tf.sqrt(tf.addN(Object.values(g).map(t=>t.square().sum()))).dataSync()[0],sc=gn>1?1/gn:1,o={};
+  for(const k in g)o[k]=g[k].mul(sc);
+  opt.learningRate=lr;opt.applyGradients(o)});
+ return loss}
+
+/* ---------- O'qitish sikli ---------- */
+const lrAt=(s,b,tot)=>b*Math.min(1,(s+1)/100)*(0.1+0.9*0.5*(1+Math.cos(Math.PI*Math.min(1,s/tot))));
+async function run(){if(running)return;
+ if(!P)return alert('Avval model yarating');
+ if(corpus.length<cfg.T+3)return alert('Ma\'lumot kam: kamida '+(cfg.T+3)+' bayt kerak');
+ running=true;ui();makeOpt();
+ const tot=+$('tS').value||20000,lr0=+$('tLR').value||6e-4,B=+$('tB').value||8;
+ let acc=0,cnt=0,last=performance.now();
+ while(running){const lr=lrAt(st.step,lr0,tot),l=trainStep(lr);
+  if(!isFinite(l)){running=false;$('log').textContent='Loss NaN bo\'ldi. Learning rate ni kamaytirib, qayta urining.';break}
+  st.step++;st.seen+=B*cfg.T;acc+=l;cnt++;
+  if(cnt>=st.agg){const now=performance.now(),tps=Math.round(B*cfg.T*cnt/((now-last)/1000));last=now;
+   st.losses.push(acc/cnt);acc=0;cnt=0;
+   if(st.losses.length>3000){st.losses=st.losses.filter((_,i)=>i%2==0);st.agg*=2}
+   $('log').textContent=`qadam ${st.step} | loss ${st.losses[st.losses.length-1].toFixed(3)} | lr ${lr.toExponential(1)} | ${tps} token/s`;
+   draw();stats()}
+  if(st.step%200===0)await save();
+  await tf.nextFrame()}
+ await save();running=false;ui()}
+function ui(){$('go').disabled=running}
+$('go').onclick=run;$('stop').onclick=()=>{running=false};
+
+/* ---------- Saqlash / yuklash ---------- */
+function toBin(){const names=Object.keys(P),shapes=names.map(n=>P[n].shape),bufs=names.map(n=>P[n].dataSync());
+ const h=enc.encode(JSON.stringify({v:1,cfg,names,shapes,step:st.step,seen:st.seen,tokens:corpus.length}));
+ const out=new Uint8Array(4+h.length+bufs.reduce((a,b)=>a+b.byteLength,0));
+ new DataView(out.buffer).setUint32(0,h.length,true);out.set(h,4);let o=4+h.length;
+ bufs.forEach(b=>{out.set(new Uint8Array(b.buffer,b.byteOffset,b.byteLength),o);o+=b.byteLength});return out}
+function fromBin(buf){const u=new Uint8Array(buf),hl=new DataView(buf).getUint32(0,true),h=JSON.parse(dec.decode(u.subarray(4,4+hl)));
+ let o=4+hl;disposeP();cfg=h.cfg;P={};
+ h.names.forEach((n,i)=>{const sz=h.shapes[i].reduce((a,b)=>a*b,1);
+  P[n]=mkV(()=>tf.tensor(new Float32Array(u.slice(o,o+sz*4).buffer),h.shapes[i]));o+=sz*4});
+ st={step:h.step||0,seen:h.seen||0,losses:[],agg:5};setCfgUI();makeOpt()}
+async function save(){if(!P)return;try{await dbSet('ckpt',toBin().buffer);await dbSet('st',st)}catch(e){$('log').textContent='Saqlab bo\'lmadi: '+e.message}}
+$('ex').onclick=()=>{if(!P)return alert('Model yo\'q');const a=document.createElement('a');
+ a.href=URL.createObjectURL(new Blob([toBin()]));a.download='dexo-gpt-model.bin';a.click()};
+$('im').onchange=async e=>{const f=e.target.files[0];if(!f||running)return;
+ try{fromBin(await f.arrayBuffer());stats();draw();await save()}catch(x){alert('Fayl noto\'g\'ri: '+x.message)}e.target.value=''};
+
+/* ---------- Sinov ---------- */
+function sample(lg,temp,k){const idx=Array.from(lg.keys()).sort((a,b)=>lg[b]-lg[a]).slice(0,k>0?k:V);
+ if(temp<=0.01)return idx[0];const m=lg[idx[0]],p=idx.map(i=>Math.exp((lg[i]-m)/temp));
+ let r=Math.random()*p.reduce((a,b)=>a+b,0);for(let j=0;j<idx.length;j++){r-=p[j];if(r<=0)return idx[j]}return idx[0]}
+$('gen').onclick=async()=>{if(!P)return alert('Model yo\'q');if(running)return alert('Avval o\'qitishni to\'xtating');
+ const temp=+$('gTemp').value,k=+$('gK').value,N=+$('gN').value;
+ const ids=Array.from(enc.encode('\x01'+clean($('pr').value)+'\x02')),out=[];$('out').textContent='';
+ for(let n=0;n<N;n++){const ctx=ids.slice(-cfg.T);
+  const t=tf.tidy(()=>fwd(tf.tensor2d(ctx,[1,ctx.length],'int32')).slice([ctx.length-1,0],[1,V]).flatten());
+  const lg=t.dataSync();t.dispose();const c=sample(lg,temp,k);if(c===3)break;
+  ids.push(c);out.push(c);
+  if(n%6===0){$('out').textContent=dec.decode(new Uint8Array(out));await tf.nextFrame()}}
+ $('out').textContent=dec.decode(new Uint8Array(out))};
+
+/* ---------- Ko'rsatkichlar ---------- */
+const f=n=>n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':''+n;
+function stats(){const tok=corpus.length,par=P?Object.values(P).reduce((a,v)=>a+v.size,0):0;
+ $('sD').textContent=f(tok);$('sDd').textContent=npairs+' juftlik/hujjat';
+ $('sM').textContent=f(par);$('sMd').textContent=cfg?`${cfg.L} qatlam, ${cfg.C} keng, ctx ${cfg.T}`:'model yo\'q';
+ $('sT').textContent=f(st.seen);$('sTd').textContent=`${st.step} qadam, ${tok?(st.seen/tok).toFixed(2):0} epoch`;
+ let a='';
+ if(par&&tok){const r=tok/par;
+  if(r<5)a=`Ma'lumot modelga nisbatan kam (${r.toFixed(1)} token/parametr): model yodlab oladi. Ma'lumot qo'shing yoki modelni kichikroq qiling.`;
+  else if(r<20)a=`Ma'lumot yaxshi, lekin ideal emas (${r.toFixed(1)} token/parametr, ideal 20 dan ko'p). Ma'lumot qo'shishda davom eting.`;
+  else if(r>200)a=`Ma'lumot juda ko'p, model kichik (${Math.round(r)} token/parametr). "+ Qatlam" bilan modelni kattalashtiring.`;
+  else a=`Ma'lumot va model muvozanatda (${Math.round(r)} token/parametr).`;
+  if(st.seen/tok>10&&r<20)a+=' Ma\'lumotni 10 martadan ko\'p aylanib chiqdi: yodlash xavfi bor.'}
+ else if(!P)a='Avval model yarating (2-bo\'lim).';
+ $('adv').textContent=a}
+function draw(){const c=$('ch'),x=c.getContext('2d'),d=devicePixelRatio||1,w=c.width=c.clientWidth*d,h=c.height=140*d;
+ x.clearRect(0,0,w,h);const a=st.losses.slice(-1000);if(a.length<2)return;
+ const mx=Math.max(...a),mn=Math.min(...a),r=(mx-mn)||1;
+ x.strokeStyle='#5fd0c5';x.lineWidth=2*d;x.beginPath();
+ a.forEach((v,i)=>{const px=i/(a.length-1)*w,py=h-8*d-(v-mn)/r*(h-16*d);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();
+ x.fillStyle='#97a0af';x.font=11*d+'px system-ui';x.fillText(mx.toFixed(2),4*d,12*d);x.fillText(mn.toFixed(2),4*d,h-2*d)}
+
+/* ---------- Ishga tushirish ---------- */
+(async()=>{await tf.ready();$('be').textContent='Backend: '+tf.getBackend()+(tf.getBackend()==='cpu'?' (sekin: WebGL yoqilgan brauzer kerak)':'');
+ const c=await dbGet('corpus');if(c){corpus=new Uint8Array(c);buildMask()}
+ const k=await dbGet('ckpt');if(k){try{fromBin(k);const s=await dbGet('st');if(s){st=s;st.agg=st.agg||5}}catch(e){}}
+ stats();draw()})();
+</script>
+</body></html>
