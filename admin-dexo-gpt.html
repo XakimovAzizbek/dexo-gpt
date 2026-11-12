@@ -26,6 +26,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .tri span{font-size:11px;color:var(--m)}
 canvas{width:100%;height:140px;background:var(--bg);border-radius:8px;display:block}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:8px;border-radius:8px;min-height:50px;margin:6px 0}
+summary{color:var(--a);cursor:pointer;font-weight:700;margin-bottom:6px}
 small,.hint{color:var(--m);font-size:12px}
 #adv{margin:8px 0 0;color:var(--a);font-size:13px}
 </style></head><body>
@@ -55,8 +56,8 @@ small,.hint{color:var(--m);font-size:12px}
 <p class="hint">Bitta juftlik model konteksti (ctx) ichiga sig'ishi kerak, aks holda o'rtadan kesiladi.</p>
 </div>
 
-<div class="card">
-<h2>2. Model (kattalashtiriladi)</h2>
+<details class="card">
+<summary>Qo'lda model sozlash (shart emas, avto o'zi qiladi)</summary>
 <div class="row">
 <button class="s" data-p="4,128,4,128">Kichik ~0.8M</button>
 <button class="s" data-p="6,256,8,256">O'rta ~5M</button>
@@ -77,24 +78,27 @@ small,.hint{color:var(--m);font-size:12px}
 <div><label>Yangi kontekst</label><input id="gT" type="number" value="256"></div>
 <button class="s" id="grT">Kontekstni uzaytirish</button>
 </div>
-</div>
+</details>
 
 <div class="card">
-<h2>3. O'qitish</h2>
+<h2>2. O'qitish (bitta tugma)</h2>
+<div class="row"><button id="go">▶ Avto o'qitish</button><button class="r" id="stop">To'xtatish</button></div>
+<p class="hint">Model o'zi yaratiladi. Loss to'xtab qolsa va ma'lumot yetarli bo'lsa, model o'zi kattalashadi. O'qish paytida ma'lumot qo'shsangiz ham bo'ladi, u darrov ishlatiladi.</p>
+<details><summary>Qo'shimcha sozlamalar</summary>
 <div class="row">
 <div><label>Batch</label><input id="tB" type="number" value="8"></div>
 <div><label>Learning rate</label><input id="tLR" type="number" step="0.0001" value="0.0006"></div>
 <div><label>Jami qadam (jadval)</label><input id="tS" type="number" value="20000"></div>
 <div><label>Kirish og'irligi (0-1)</label><input id="tW" type="number" step="0.1" value="0.3"></div>
 </div>
-<div class="row"><button id="go">O'qitishni boshlash / davom etish</button><button class="r" id="stop">To'xtatish</button></div>
+</details>
 <canvas id="ch"></canvas>
 <pre id="log">Hali boshlanmagan</pre>
 <p class="hint">Har 200 qadamda avtomatik checkpoint saqlanadi. Sahifani yopib, keyin davom ettirsangiz bo'ladi.</p>
 </div>
 
 <div class="card">
-<h2>4. Sinov</h2>
+<h2>3. Sinov</h2>
 <textarea id="pr" placeholder="Kirish (o'qitishdagi formatda)"></textarea>
 <div class="row">
 <div><label>Temperature</label><input id="gTemp" type="number" step="0.1" value="0.5"></div>
@@ -106,7 +110,7 @@ small,.hint{color:var(--m);font-size:12px}
 </div>
 
 <div class="card">
-<h2>5. Saqlash va ko'chirish</h2>
+<h2>4. Saqlash va ko'chirish</h2>
 <div class="row"><button id="ex">Modelni yuklab olish (.bin)</button></div>
 <label>Modelni yuklash (boshqa qurilmadan davom etish yoki DEXO GPT uchun tekshirish)</label>
 <input type="file" id="im" accept=".bin">
@@ -200,7 +204,8 @@ function trainStep(lr){let loss=0;
 /* ---------- O'qitish sikli ---------- */
 const lrAt=(s,b,tot)=>b*Math.min(1,(s+1)/100)*(0.1+0.9*0.5*(1+Math.cos(Math.PI*Math.min(1,s/tot))));
 async function run(){if(running)return;
- if(!P)return alert('Avval model yarating');
+ if(corpus.length<200)return alert('Avval ma\'lumot qo\'shing (kamida bir nechta juftlik)');
+ if(!P){const t=corpus.length,p=t<2e6?[4,128,4,128]:t<4e7?[6,256,8,256]:[8,384,6,256];initModel({L:p[0],C:p[1],H:p[2],T:p[3]});setCfgUI();stats()}
  if(corpus.length<cfg.T+3)return alert('Ma\'lumot kam: kamida '+(cfg.T+3)+' bayt kerak');
  running=true;ui();makeOpt();
  const tot=+$('tS').value||20000,lr0=+$('tLR').value||6e-4,B=+$('tB').value||8;
@@ -213,9 +218,19 @@ async function run(){if(running)return;
    if(st.losses.length>3000){st.losses=st.losses.filter((_,i)=>i%2==0);st.agg*=2}
    $('log').textContent=`qadam ${st.step} | loss ${st.losses[st.losses.length-1].toFixed(3)} | lr ${lr.toExponential(1)} | ${tps} token/s`;
    draw();stats()}
+  if(st.step%500===0)autoGrow();
   if(st.step%200===0)await save();
   await tf.nextFrame()}
  await save();running=false;ui()}
+let note='';
+function grow(n){const old=cfg.L;cfg={...cfg,L:old+n};for(let i=old;i<cfg.L;i++)addLayer(i,true);makeOpt();setCfgUI()}
+function autoGrow(){const a=st.losses,n=a.length;note='';
+ if(st.step<1000||n<40||n-(st.lg||0)<40||cfg.L>=16)return;
+ const avg=(i,j)=>a.slice(i,j).reduce((s,v)=>s+v,0)/(j-i),o=avg(n-40,n-20),w=avg(n-20,n);
+ if(o-w>o*0.01)return;
+ const par=Object.values(P).reduce((s,v)=>s+v.size,0);
+ if(corpus.length/par>20){grow(2);st.lg=n;note=' Loss to\'xtagani uchun model avto +2 qatlam oldi.'}
+ else note=' Loss to\'xtadi, lekin ma\'lumot kam: ma\'lumot qo\'shing.'}
 function ui(){$('go').disabled=running}
 $('go').onclick=run;$('stop').onclick=()=>{running=false};
 
@@ -263,8 +278,8 @@ function stats(){const tok=corpus.length,par=P?Object.values(P).reduce((a,v)=>a+
   else if(r>200)a=`Ma'lumot juda ko'p, model kichik (${Math.round(r)} token/parametr). "+ Qatlam" bilan modelni kattalashtiring.`;
   else a=`Ma'lumot va model muvozanatda (${Math.round(r)} token/parametr).`;
   if(st.seen/tok>10&&r<20)a+=' Ma\'lumotni 10 martadan ko\'p aylanib chiqdi: yodlash xavfi bor.'}
- else if(!P)a='Avval model yarating (2-bo\'lim).';
- $('adv').textContent=a}
+ else if(!P)a='Ma\'lumot qo\'shing, keyin "Avto o\'qitish" ni bosing.';
+ $('adv').textContent=a+note}
 function draw(){const c=$('ch'),x=c.getContext('2d'),d=devicePixelRatio||1,w=c.width=c.clientWidth*d,h=c.height=140*d;
  x.clearRect(0,0,w,h);const a=st.losses.slice(-1000);if(a.length<2)return;
  const mx=Math.max(...a),mn=Math.min(...a),r=(mx-mn)||1;
