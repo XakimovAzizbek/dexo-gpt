@@ -146,7 +146,7 @@ $('clr').onclick=async()=>{if(!confirm('Barcha ma\'lumot o\'chadi. Model qoladi.
 /* ---------- Model ---------- */
 const mkV=f=>tf.tidy(()=>tf.variable(f()));
 function disposeP(){if(P)Object.values(P).forEach(v=>v.dispose());P=null;if(opt){opt.dispose();opt=null}}
-function makeOpt(){if(opt)opt.dispose();opt=tf.train.adam(+$('tLR').value||6e-4,0.9,0.95,1e-8)}
+function makeOpt(){if(opt)opt.dispose();opt=tf.train.adam(+$('tLR').value||6e-4,0.9,0.95)}
 function addLayer(i,zero){const C=cfg.C,s=0.02,sp=zero?0:s/Math.sqrt(2*cfg.L),k='l'+i;
  const rn=(sh,sd)=>mkV(()=>sd?tf.randomNormal(sh,0,sd):tf.zeros(sh));
  P[k+'_g1']=mkV(()=>tf.ones([C]));P[k+'_b1']=mkV(()=>tf.zeros([C]));
@@ -177,7 +177,7 @@ function ln(x,g,b){const m=x.mean(-1,true),d=x.sub(m);return d.div(d.square().me
 const gelu=x=>x.mul(0.5).mul(tf.tanh(x.add(x.square().mul(x).mul(0.044715)).mul(0.7978845608)).add(1));
 function fwd(ids){const [B,Tn]=ids.shape,C=cfg.C,H=cfg.H,D=C/H,N=B*Tn;
  let x=tf.gather(P.wte,ids.flatten()).add(tf.tile(P.wpe.slice([0,0],[Tn,C]),[B,1]));
- const neg=tf.linalg.bandPart(tf.ones([Tn,Tn]),-1,0).sub(1).mul(1e9);
+ const neg=tf.linalg.bandPart(tf.ones([Tn,Tn]),-1,0).sub(1).mul(1e4);
  for(let i=0;i<cfg.L;i++){const p=n=>P['l'+i+n];
   const qkv=ln(x,p('_g1'),p('_b1')).matMul(p('_qW')).add(p('_qB')).reshape([B,Tn,3,H,D]);
   const sp=k=>qkv.slice([0,0,k,0,0],[B,Tn,1,H,D]).reshape([B,Tn,H,D]).transpose([0,2,1,3]);
@@ -203,11 +203,12 @@ function trainStep(lr){let loss=0;
 
 /* ---------- O'qitish sikli ---------- */
 const lrAt=(s,b,tot)=>b*Math.min(1,(s+1)/100)*(0.1+0.9*0.5*(1+Math.cos(Math.PI*Math.min(1,s/tot))));
-async function run(){if(running)return;
+async function run(){try{await runInner()}catch(e){running=false;ui();$('log').textContent='XATO: '+(e&&e.message||e);console.error(e)}}
+async function runInner(){if(running)return;
  if(corpus.length<200)return alert('Avval ma\'lumot qo\'shing (kamida bir nechta juftlik)');
  if(!P){const t=corpus.length,p=t<2e6?[4,128,4,128]:t<4e7?[6,256,8,256]:[8,384,6,256];initModel({L:p[0],C:p[1],H:p[2],T:p[3]});setCfgUI();stats()}
  if(corpus.length<cfg.T+3)return alert('Ma\'lumot kam: kamida '+(cfg.T+3)+' bayt kerak');
- running=true;ui();makeOpt();
+ running=true;ui();makeOpt();$('log').textContent='Boshlandi, birinchi qadamlar sekin bo\'lishi mumkin...';
  const tot=+$('tS').value||20000,lr0=+$('tLR').value||6e-4,B=+$('tB').value||8;
  let acc=0,cnt=0,last=performance.now();
  while(running){const lr=lrAt(st.step,lr0,tot),l=trainStep(lr);
