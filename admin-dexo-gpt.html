@@ -176,7 +176,7 @@ $('grT').onclick=()=>{if(!P||running)return alert('Model yo\'q yoki o\'qitish ke
 function ln(x,g,b){const m=x.mean(-1,true),d=x.sub(m);return d.div(d.square().mean(-1,true).add(1e-5).sqrt()).mul(g).add(b)}
 const gelu=x=>x.mul(0.5).mul(tf.tanh(x.add(x.square().mul(x).mul(0.044715)).mul(0.7978845608)).add(1));
 function fwd(ids){const [B,Tn]=ids.shape,C=cfg.C,H=cfg.H,D=C/H,N=B*Tn;
- let x=tf.gather(P.wte,ids.flatten()).add(tf.tile(P.wpe.slice([0,0],[Tn,C]),[B,1]));
+ let x=tf.oneHot(ids.flatten(),V).cast('float32').matMul(P.wte).add(tf.tile(P.wpe.slice([0,0],[Tn,C]),[B,1]));
  const neg=tf.linalg.bandPart(tf.ones([Tn,Tn]),-1,0).sub(1).mul(1e4);
  for(let i=0;i<cfg.L;i++){const p=n=>P['l'+i+n];
   const qkv=ln(x,p('_g1'),p('_b1')).matMul(p('_qW')).add(p('_qB')).reshape([B,Tn,3,H,D]);
@@ -196,14 +196,21 @@ function batch(){const B=+$('tB').value,T=cfg.T,lw=+$('tW').value,n=corpus.lengt
 function trainStep(lr){let loss=0;
  tf.tidy(()=>{const b=batch(),r=tf.variableGrads(()=>lossFn(b.x,b.y,b.w),Object.values(P));
   loss=r.value.dataSync()[0];if(!isFinite(loss))return;
-  const g=r.grads,gn=tf.sqrt(tf.addN(Object.values(g).map(t=>t.square().sum()))).dataSync()[0],sc=gn>1?1/gn:1,o={};
+  const g=r.grads,gn=tf.sqrt(Object.values(g).map(t=>t.square().sum()).reduce((a,b)=>a.add(b))).dataSync()[0],sc=gn>1?1/gn:1,o={};
   for(const k in g)o[k]=g[k].mul(sc);
   opt.learningRate=lr;opt.applyGradients(o)});
  return loss}
 
 /* ---------- O'qitish sikli ---------- */
 const lrAt=(s,b,tot)=>b*Math.min(1,(s+1)/100)*(0.1+0.9*0.5*(1+Math.cos(Math.PI*Math.min(1,s/tot))));
-async function run(){try{await runInner()}catch(e){running=false;ui();$('log').textContent='XATO: '+(e&&e.message||e);console.error(e)}}
+async function run(){try{await runInner()}catch(e){running=false;ui();console.error(e);
+ const msg=String(e&&e.message||e),tr=String(e&&e.stack||'').split('\n').slice(1,4).join(' | ');
+ if(/shader|webgl|texture/i.test(msg)&&tf.getBackend()!=='cpu'){
+  $('log').textContent='WebGL xato berdi ('+tr+'). CPU ga o\'tilmoqda: sekinroq, lekin ishlaydi...';
+  try{const buf=P?toBin().buffer:null,s0=st;P=null;opt=null;await tf.setBackend('cpu');await tf.ready();
+   if(buf){fromBin(buf);st=s0}$('tB').value=2;$('be').textContent='Backend: cpu (WebGL ishlamadi)';return run()}
+  catch(e2){$('log').textContent='XATO: '+String(e2&&e2.message||e2)}}
+ else $('log').textContent='XATO: '+msg+' | '+tr}}
 async function runInner(){if(running)return;
  if(corpus.length<200)return alert('Avval ma\'lumot qo\'shing (kamida bir nechta juftlik)');
  if(!P){const t=corpus.length,p=t<2e6?[4,128,4,128]:t<4e7?[6,256,8,256]:[8,384,6,256];initModel({L:p[0],C:p[1],H:p[2],T:p[3]});setCfgUI();stats()}
@@ -289,7 +296,7 @@ function draw(){const c=$('ch'),x=c.getContext('2d'),d=devicePixelRatio||1,w=c.w
  x.fillStyle='#97a0af';x.font=11*d+'px system-ui';x.fillText(mx.toFixed(2),4*d,12*d);x.fillText(mn.toFixed(2),4*d,h-2*d)}
 
 /* ---------- Ishga tushirish ---------- */
-(async()=>{await tf.ready();$('be').textContent='Backend: '+tf.getBackend()+(tf.getBackend()==='cpu'?' (sekin: WebGL yoqilgan brauzer kerak)':'');
+(async()=>{try{tf.env().set('WEBGL_PACK',false)}catch(e){}await tf.ready();$('be').textContent='Backend: '+tf.getBackend()+(tf.getBackend()==='cpu'?' (sekin: WebGL yoqilgan brauzer kerak)':'');
  const c=await dbGet('corpus');if(c){corpus=new Uint8Array(c);buildMask()}
  const k=await dbGet('ckpt');if(k){try{fromBin(k);const s=await dbGet('st');if(s){st=s;st.agg=st.agg||5}}catch(e){}}
  stats();draw()})();
